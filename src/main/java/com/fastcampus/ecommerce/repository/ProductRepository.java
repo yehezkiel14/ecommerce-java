@@ -13,10 +13,11 @@ import java.util.List;
 public interface ProductRepository extends JpaRepository<Product, Long> {
 
     // Select * FROM products WHERE name = ?;
+
     @Query(value = """
-            SELECT * FROM product
-            WHERE lower("name") like :name
-            """, nativeQuery = true)
+      SELECT * FROM product
+      WHERE lower("name") like :name
+      """, nativeQuery = true)
     List<Product> findByName(String name);
 
 

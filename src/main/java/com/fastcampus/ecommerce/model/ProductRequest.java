@@ -1,6 +1,5 @@
 package com.fastcampus.ecommerce.model;
 
-
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -8,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Builder
 @Data
@@ -26,4 +26,8 @@ public class ProductRequest {
     @NotNull(message = "Deskripsi tidak boleh null")
     @Size(max = 1000, message = "Deskripsi produk tidak boleh lebih dari 1000 karakter")
     private String description;
+
+    private Integer stockQuantity;
+    private BigDecimal weight;
+    private List<Long> categoryIds;
 }
