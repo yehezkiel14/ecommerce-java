@@ -88,6 +88,7 @@ public class ProductServiceImpl implements ProductService {
 
         List<Category> categories = getCategoriesByIds(productRequest.getCategoryIds());
 
+        existingProduct.setProductId(productId);
         existingProduct.setName(productRequest.getName());
         existingProduct.setDescription(productRequest.getDescription());
         existingProduct.setPrice(productRequest.getPrice());
