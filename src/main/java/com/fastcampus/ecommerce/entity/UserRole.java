@@ -20,7 +20,7 @@ import java.time.LocalDateTime;
 public class UserRole {
 
     @EmbeddedId
-    private User id;
+    private UserRoleId id;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
