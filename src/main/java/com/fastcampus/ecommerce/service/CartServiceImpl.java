@@ -51,14 +51,14 @@ public class CartServiceImpl implements CartService {
         }
 
 
-        Optional<CartItem> existingItemOpt = cartItemRepository.findByCartIdAndProductId(cart.getCartId(), productId);
+        Optional<CartItem> existingItemOpt = cartItemRepository.findByCartIdAndProductId(
+                cart.getCartId(), productId);
 
         if (existingItemOpt.isPresent()) {
             CartItem existingItem = existingItemOpt.get();
             existingItem.setQuantity(existingItem.getQuantity() + quantity);
             cartItemRepository.save(existingItem);
         } else {
-            // kalau datanya tidak ada di database, buat data baru
             CartItem newItem = CartItem.builder()
                     .cartId(cart.getCartId())
                     .productId(productId)
