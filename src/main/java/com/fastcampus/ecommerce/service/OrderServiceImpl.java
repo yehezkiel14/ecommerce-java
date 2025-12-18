@@ -1,0 +1,171 @@
+package com.fastcampus.ecommerce.service;
+
+import com.fastcampus.ecommerce.common.errors.ResourceNotFoundException;
+import com.fastcampus.ecommerce.entity.*;
+import com.fastcampus.ecommerce.model.CheckoutRequest;
+import com.fastcampus.ecommerce.model.OrderItemResponse;
+import com.fastcampus.ecommerce.repository.*;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class OrderServiceImpl implements OrderService {
+
+    private final CartItemRepository cartItemRepository;
+    private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
+    private final UserAddressRepository userAddressRepository;
+    private final ProductRepository productRepository;
+
+    @Override
+    @Transactional
+    public Order checkout(CheckoutRequest checkoutRequest) {
+        List<CartItem> selectedItems = cartItemRepository.findAllById(checkoutRequest.getSelectedCartItemIds());
+
+        if (selectedItems.isEmpty()) {
+            throw new ResourceNotFoundException("No cart items found for checkout.");
+        }
+
+        UserAddress shippingAddress = userAddressRepository.findById(checkoutRequest.getUserAddressId())
+                .orElseThrow(() -> new ResourceNotFoundException("Shipping address with id " + checkoutRequest.getUserAddressId() + " not found."));
+
+
+        Order newOrder = Order.builder()
+                .userId(checkoutRequest.getUserId())
+                .status("PENDING")
+                .orderDate(LocalDateTime.now())
+                .totalAmount(BigDecimal.ZERO)
+                .taxFee(BigDecimal.ZERO)
+                .subtotal(BigDecimal.ZERO)
+                .shippingFee(BigDecimal.ZERO)
+                .build();
+
+        Order savedOrder = orderRepository.save(newOrder);
+
+        List<OrderItem> orderItems = selectedItems.stream()
+                .map(cartItem -> {
+                    return OrderItem.builder()
+                            .orderId(savedOrder.getOrderId())
+                            .productId(cartItem.getProductId())
+                            .quantity(cartItem.getQuantity())
+                            .price(cartItem.getPrice())
+                            .userAddressId(shippingAddress.getUserAddressId())
+                            .build();
+                })
+                .toList();
+
+        orderItemRepository.saveAll(orderItems);
+
+        cartItemRepository.deleteAll(selectedItems);
+
+        BigDecimal totalAmount = orderItems.stream()
+                .map(orderItem -> orderItem.getPrice().multiply(BigDecimal.valueOf(orderItem.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        savedOrder.setTotalAmount(totalAmount);
+
+
+        return orderRepository.save(savedOrder);
+    }
+
+    @Override
+    public Optional<Order> findOrderById(Long orderId) {
+        return orderRepository.findById(orderId);
+    }
+
+    @Override
+    public List<Order> findOrdersByUserId(Long userId) {
+        return orderRepository.findByUserId(userId);
+    }
+
+    @Override
+    public List<Order> findOrdersByStatus(String status) {
+        return orderRepository.findByStatus(status);
+    }
+
+    @Override
+    public void cancelOrder(Long orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order with id " + orderId + " not found."));
+
+        if (!"PENDING".equals(order.getStatus())) {
+            throw new IllegalStateException("Only orders with status 'PENDING' can be cancelled.");
+        }
+
+        order.setStatus("CANCELLED");
+        orderRepository.save(order);    
+    }
+
+    @Override
+    public List<OrderItemResponse> findOrderItemsByOrderId(Long orderId) {
+        List<OrderItem> orderItems = orderItemRepository.findByOrderId(orderId);
+
+        if (orderItems.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<Long> productIds = orderItems.stream()
+                .map(OrderItem::getProductId)
+                .toList();
+        List<Long> shippingAddressIds = orderItems.stream()
+                .map(OrderItem::getUserAddressId)
+                .toList();
+
+        // Query list of products & shipping address from the orders
+        List<Product> products = productRepository.findAllById(productIds);
+        List<UserAddress> shippingAddress = userAddressRepository.findAllById(shippingAddressIds);
+
+        Map<Long, Product> productMap = products.stream()
+                .collect(Collectors.toMap(Product::getProductId, Function.identity()));
+        Map<Long, UserAddress> userAddressMap = shippingAddress.stream()
+                .collect(Collectors.toMap(UserAddress::getUserAddressId, Function.identity()));
+
+        return orderItems.stream()
+                .map(orderItem -> {
+                    Product product = productMap.get(orderItem.getProductId());
+                    UserAddress userAddress = userAddressMap.get(orderItem.getUserAddressId());
+
+                    if (product == null) {
+                        throw new ResourceNotFoundException(
+                                "Product with id " + orderItem.getProductId() + " is not found");
+                    }
+                    if (userAddress == null) {
+                        throw new ResourceNotFoundException(
+                                "User address with id " + orderItem.getUserAddressId() + " is not found");
+                    }
+
+                    return OrderItemResponse.fromOrderItemProductAndAddress(orderItem, product, userAddress);
+                })
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public void updateOrderStatus(Long orderId, String newStatus) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order with id " + orderId + " not found."));
+
+        if (!"PENDING".equals(order.getStatus())) {
+            throw new IllegalStateException("Only orders with status 'PENDING' can be cancelled.");
+        }
+
+        order.setStatus(newStatus);
+        orderRepository.save(order);
+    }
+
+    @Override
+//    @Transactional
+    public Double calculateOrderTotal(Long orderId) {
+        return orderItemRepository.calculateTotalOrder(orderId);
+    }
+}
