@@ -4,6 +4,8 @@ import com.fastcampus.ecommerce.common.errors.ResourceNotFoundException;
 import com.fastcampus.ecommerce.entity.*;
 import com.fastcampus.ecommerce.model.CheckoutRequest;
 import com.fastcampus.ecommerce.model.OrderItemResponse;
+import com.fastcampus.ecommerce.model.ShippingRateRequest;
+import com.fastcampus.ecommerce.model.ShippingRateResponse;
 import com.fastcampus.ecommerce.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +28,9 @@ public class OrderServiceImpl implements OrderService {
     private final OrderItemRepository orderItemRepository;
     private final UserAddressRepository userAddressRepository;
     private final ProductRepository productRepository;
+    private final ShippingService shippingService;
+
+    private final BigDecimal TAX_RATE = BigDecimal.valueOf(0.3); // 30% tax rate
 
     @Override
     @Transactional
@@ -68,11 +73,45 @@ public class OrderServiceImpl implements OrderService {
 
         cartItemRepository.deleteAll(selectedItems);
 
-        BigDecimal totalAmount = orderItems.stream()
+        BigDecimal subtotal = orderItems.stream()
                 .map(orderItem -> orderItem.getPrice().multiply(BigDecimal.valueOf(orderItem.getQuantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        BigDecimal shippingFee = orderItems.stream()
+                .map(orderItem -> {
+                    Optional<Product> product = productRepository.findById(orderItem.getProductId());
+                    if (product.isEmpty()) {
+                        return BigDecimal.ZERO;
+                    }
+
+                    Optional<UserAddress> sellerAddress = userAddressRepository.findByUserIdAndIsDefaultTrue(
+                            product.get().getUserId());
+                    if (sellerAddress.isEmpty()) {
+                        return BigDecimal.ZERO;
+                    }
+
+                    BigDecimal totalWeight = product.get().getWeight()
+                            .multiply(BigDecimal.valueOf(orderItem.getQuantity()));
+
+                    // calculate shipping rate
+                    ShippingRateRequest rateRequest = ShippingRateRequest.builder()
+                            .totalWeightInGrams(totalWeight)
+                            .fromAddress(ShippingRateRequest.fromUserAddress(sellerAddress.get()))
+                            .toAddress(ShippingRateRequest.fromUserAddress(shippingAddress))
+                            .build();
+                    ShippingRateResponse rateResponse = shippingService.calculateShippingRate(rateRequest);
+                    return rateResponse.getShippingFee();
+                })
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal taxFee = subtotal.multiply(TAX_RATE);
+        BigDecimal totalAmount = subtotal.add(taxFee).add(shippingFee);
+
+        savedOrder.setSubtotal(subtotal);
+        savedOrder.setShippingFee(shippingFee);
+        savedOrder.setTaxFee(taxFee);
         savedOrder.setTotalAmount(totalAmount);
+        savedOrder.setTotalAmount(subtotal);
 
 
         return orderRepository.save(savedOrder);
