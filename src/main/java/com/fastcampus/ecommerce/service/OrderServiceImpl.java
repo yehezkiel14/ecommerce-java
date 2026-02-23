@@ -2,10 +2,8 @@ package com.fastcampus.ecommerce.service;
 
 import com.fastcampus.ecommerce.common.errors.ResourceNotFoundException;
 import com.fastcampus.ecommerce.entity.*;
-import com.fastcampus.ecommerce.model.CheckoutRequest;
-import com.fastcampus.ecommerce.model.OrderItemResponse;
-import com.fastcampus.ecommerce.model.ShippingRateRequest;
-import com.fastcampus.ecommerce.model.ShippingRateResponse;
+import com.fastcampus.ecommerce.model.*;
+import com.fastcampus.ecommerce.model.OrderResponse;
 import com.fastcampus.ecommerce.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,12 +27,13 @@ public class OrderServiceImpl implements OrderService {
     private final UserAddressRepository userAddressRepository;
     private final ProductRepository productRepository;
     private final ShippingService shippingService;
+    private final PaymentService paymentService;
 
     private final BigDecimal TAX_RATE = BigDecimal.valueOf(0.3); // 30% tax rate
 
     @Override
     @Transactional
-    public Order checkout(CheckoutRequest checkoutRequest) {
+    public OrderResponse checkout(CheckoutRequest checkoutRequest) {
         List<CartItem> selectedItems = cartItemRepository.findAllById(checkoutRequest.getSelectedCartItemIds());
 
         if (selectedItems.isEmpty()) {
@@ -44,6 +43,8 @@ public class OrderServiceImpl implements OrderService {
         UserAddress shippingAddress = userAddressRepository.findById(checkoutRequest.getUserAddressId())
                 .orElseThrow(() -> new ResourceNotFoundException("Shipping address with id " + checkoutRequest.getUserAddressId() + " not found."));
 
+        Map<Long, Integer> productQuantities = selectedItems.stream()
+                .collect(Collectors.toMap(CartItem::getProductId, CartItem::getQuantity));
 
         Order newOrder = Order.builder()
                 .userId(checkoutRequest.getUserId())
@@ -113,8 +114,32 @@ public class OrderServiceImpl implements OrderService {
         savedOrder.setTotalAmount(totalAmount);
         savedOrder.setTotalAmount(subtotal);
 
+        orderRepository.save(savedOrder);
 
-        return orderRepository.save(savedOrder);
+        // interact with xendit api
+        // generate payment url
+        String paymentUrl;
+
+        try {
+            PaymentResponse paymentResponse = paymentService.create(savedOrder);
+            savedOrder.setXenditInvoiceId(paymentResponse.getXenditInvoiceId());
+            savedOrder.setXenditPaymentStatus(paymentResponse.getXenditInvoiceStatus());
+            paymentUrl = paymentResponse.getXenditPaymentUrl();
+
+            orderRepository.save(savedOrder);
+        } catch (Exception ex) {
+            log.error("Payment creation for order: " + savedOrder.getOrderId() + " is failed. Reason:"
+                    + ex.getMessage());
+            savedOrder.setStatus("PAYMENT_FAILED");
+
+            orderRepository.save(savedOrder);
+            return OrderResponse.fromOrder(savedOrder);
+       }
+
+        OrderResponse orderResponse = OrderResponse.fromOrder(savedOrder);
+        orderResponse.setPaymentUrl(paymentUrl);
+
+        return orderResponse;
     }
 
     @Override
