@@ -1,6 +1,7 @@
 package com.fastcampus.ecommerce.entity;
 
 //import com.fastcampus.ecommerce.model.OrderStatus;
+import com.fastcampus.ecommerce.model.OrderStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -46,12 +47,9 @@ public class Order {
     @Column(name = "total_amount", nullable = false, precision = 10, scale = 2)
     private BigDecimal totalAmount;
 
-//    @Column(nullable = false)
-//    @Enumerated(EnumType.STRING)
-//    private OrderStatus status;
-
     @Column(nullable = false)
-    private String status;
+    @Enumerated(EnumType.STRING)
+    private OrderStatus status;
 
     @Column(name = "order_date", nullable = false)
     private LocalDateTime orderDate;
