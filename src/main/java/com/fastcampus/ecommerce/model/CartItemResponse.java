@@ -22,7 +22,7 @@ import java.time.LocalDateTime;
 public class CartItemResponse implements Serializable {
 
     private Long cartItemId;
-    private Long producId;
+    private Long productId;
     private String productName;
     private BigDecimal price;
     private Integer quantity;
@@ -37,7 +37,7 @@ public class CartItemResponse implements Serializable {
 
         return CartItemResponse.builder()
                 .cartItemId(cartItem.getCartItemId())
-                .producId(product.getProductId())
+                .productId(product.getProductId())
                 .productName(product.getName())
                 .price(cartItem.getPrice())
                 .quantity(cartItem.getQuantity())

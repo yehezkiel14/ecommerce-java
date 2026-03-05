@@ -49,7 +49,7 @@ public class genericExceptionHandler {
     }
 
     // untuk BadRequestException
-    @ExceptionHandler(BadRequestException.class)
+    @ExceptionHandler({BadRequestException.class, InventoryException.class})
     @ResponseStatus(HttpStatus.BAD_REQUEST) //mengembalikan http status
     public @ResponseBody ErrorResponse handleBadRequestException(
             HttpServletRequest req,
